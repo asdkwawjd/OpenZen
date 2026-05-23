@@ -191,9 +191,11 @@ public class ModuleManager extends ClientBase {
 
     @EventTarget
     public void onKey(KeyEvent event) {
-        for (Module module : this.moduleMap.values()) {
-            if (module.getKey() != 0 && module.getKey() == event.getKeyCode() && event.isPressed()) {
-                module.toggle();
+        if (mc.screen == null) {
+            for (Module module : this.moduleMap.values()) {
+                if (module.getKey() != 0 && module.getKey() == event.getKeyCode() && event.isPressed()) {
+                    module.toggle();
+                }
             }
         }
     }
