@@ -5,9 +5,11 @@ on:
     branches: [master]
   workflow_dispatch: {}
 
-# Needed for vcpkg's GitHub Actions binary cache (x-gha backend).
+# contents: write so the [Release] commit-marker path can create a
+# GitHub Release and upload the built artifacts.
+# actions: write needed for vcpkg's GitHub Actions binary cache (x-gha backend).
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -163,3 +165,39 @@ jobs:
           path: build/release/OpenZen-${{ steps.rev.outputs.sha }}.jar
           if-no-files-found: error
           retention-days: 30
+
+      # ===== Optional GitHub Release publish =====
+      # If the HEAD commit message contains the literal marker "[Release]",
+      # cut a GitHub Release tagged build-<sha> and attach the exe + jar.
+      # Without the marker, this step is skipped — every push still produces
+      # the Actions artifacts above, only tagged releases are gated.
+      - name: Detect [Release] marker
+        id: relmark
+        shell: pwsh
+        run: |
+          $msg = (git log -1 --pretty=%B HEAD | Out-String)
+          $isRelease = $msg.Contains("[Release]")
+          "is_release=$($isRelease.ToString().ToLower())" |
+              Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "HEAD commit message:"
+          Write-Host $msg
+          Write-Host "[Release] marker present: $isRelease"
+
+      - name: Publish GitHub Release
+        if: steps.relmark.outputs.is_release == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.rev.outputs.sha }}
+        run: |
+          $tag   = "build-$env:SHA"
+          $title = "Build $env:SHA"
+          # Write notes via a file so quoting / [brackets] / newlines in the
+          # commit message can't corrupt the gh command line.
+          $notes = "release-notes.md"
+          git log -1 --pretty=%B HEAD | Out-File -FilePath $notes -Encoding utf8
+          gh release create $tag `
+              --title $title `
+              --notes-file $notes `
+              "build/release/OpenZenLoader-$env:SHA.exe" `
+              "build/release/OpenZen-$env:SHA.jar"
